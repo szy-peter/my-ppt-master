@@ -75,7 +75,7 @@ python3 skills/ppt-master/scripts/animation_config.py scaffold <project_path>  #
 python3 skills/ppt-master/scripts/animation_config.py validate <project_path>  # optional, before re-export
 
 # Existing PPTX native enhancement workflow — direct OOXML patch, no SVG conversion
-python3 skills/ppt-master/scripts/native_enhance_pptx.py init <PPTX_file> --name <project_slug>
+python3 skills/ppt-master/scripts/native_enhance_pptx.py init <PPTX_file> --name <project_slug> [--references <ref>...]
 python3 skills/ppt-master/scripts/native_enhance_pptx.py validate <project_path>
 python3 skills/ppt-master/scripts/native_enhance_pptx.py apply <project_path>
 

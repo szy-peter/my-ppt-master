@@ -78,7 +78,9 @@ source.pptx
 Run:
 
 ```bash
-python3 skills/ppt-master/scripts/native_enhance_pptx.py init "<source.pptx>" --name "<project_slug>"
+python3 skills/ppt-master/scripts/native_enhance_pptx.py init "<source.pptx>" \
+    --name "<project_slug>" \
+    [--references "<ref1>" "<ref2>" ...]
 ```
 
 Project layout:
@@ -88,6 +90,7 @@ Project layout:
 | `<project>/project.json` | Project schema, kind, enabled modules, source paths, defaults |
 | `<project>/sources/<source>.pptx` | Archived source PPTX used for package patching |
 | `<project>/sources/<source>.md` | `ppt_to_md.py` output for slide understanding |
+| `<project>/references/` | Archived reference materials (PDF/DOCX/XLSX/EPUB/HTML/URL/MD/TXT) with non-MD auto-converted to a sibling `.md`; optional, present only when `--references` is passed |
 | `<project>/analysis/slide_index.json` | Slide order and PPTX slide part mapping |
 | `<project>/notes/` | Per-slide spoken notes, named `001.md`, `002.md`, ... |
 | `<project>/audio/` | Per-slide narration media, named `001.mp3`, `002.mp3`, ... |
@@ -97,6 +100,13 @@ Project layout:
 **Validation**: `project.json` contains `schema: native_pptx_enhancement_project.v1`, `kind: native_pptx_enhancement`, and `modules` containing `notes`, `audio`, `timings`, `transitions`.
 
 **Source import rule**: When `<source.pptx>` is inside the repo's `projects/` tree, `init` moves it into `<project>/sources/`. When it is outside `projects/`, `init` copies it into `<project>/sources/`. The mode is recorded in `project.json` as `source_import.mode`.
+
+**Reference import rule** (only when `--references` is passed):
+
+- Each reference follows the same move-vs-copy decision as the source PPTX: inside `projects/` → move; outside → copy. URLs are never archived as binaries — they convert straight to `references/<slug>.md`.
+- Non-Markdown references (PDF/DOCX/XLSX/EPUB/HTML/PPTX) are auto-converted to a sibling `.md` via the `source_to_md` dispatcher. Markdown/text references are archived as-is; their `markdown_path` equals their `source_path`.
+- A single reference conversion failure does **not** abort `init` — the file is still archived, a warning is printed to stderr, and the entry is recorded in `project.json` with `markdown_path: null` and a `conversion_error` string. `validate` will later flag it under `missing_references`.
+- Every reference record in `project.json` carries `original_path`, `source_path` (relative to project root, or null for URLs), `markdown_path` (or null), `import_mode` (`move`/`copy`/`reuse`/`url`/`missing`), and optional `conversion_error`.
 
 The `init` command also writes:
 
@@ -127,6 +137,8 @@ Present the plan to the user before generating notes or audio:
 | `timings` | Enabled with audio | Set slide auto-advance from audio duration? |
 | `transitions` | Enabled, `fade` 0.5s | Add page transitions? Which effect/duration? |
 
+**References status** (read from `enhancement_plan.json.references`): if `count > 0`, surface to the user how many reference files were declared and how many have a usable Markdown conversion. References are **input to the notes step, not a toggleable module** — no extra confirmation is required for them, but the user should know they exist and may remove or amend them under `<project>/references/` before Step 6.
+
 **⛔ BLOCKING**: Stop here and wait for explicit user confirmation. Do not generate notes, generate audio, or patch the PPTX until the user confirms the module plan.
 
 After confirmation, update `<project>/analysis/enhancement_plan.json`:
@@ -151,6 +163,7 @@ Read:
 |---|---|
 | `<project>/sources/<source>.md` | Visible slide text, tables, extracted notes, image references |
 | `<project>/analysis/slide_index.json` | Exact slide count and target note filenames |
+| `<project>/references/*.md` | Optional reference Markdown (one per `--references` entry whose conversion succeeded). Read when present; skip when the project has no references or a specific reference's `markdown_path` is null. |
 
 Write:
 
@@ -163,6 +176,8 @@ Write:
 **Hard rule**: Notes are spoken narration only. Do not include stage directions, implementation comments, timing labels, markdown tables, or visible-slide rewrite instructions.
 
 **Hard rule**: Notes must be faithful to the slide. They may explain visible content, but must not add unsupported facts.
+
+**Hard rule**: References shape HOW notes are narrated (tone, depth, emphasis, terminology), not WHAT facts are stated. Do not introduce facts, numbers, or claims that are absent from the visible slide even if those facts appear in a reference. If a reference conflicts with the slide, the slide wins — the audience sees the slide, not the reference.
 
 | Slide type | Notes length |
 |---|---|

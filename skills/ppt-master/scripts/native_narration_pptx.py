@@ -9,12 +9,14 @@ V1 enhancement modules: speaker notes, narration audio, slide auto-advance
 timings, and optional page transitions.
 
 Usage:
-    python3 scripts/native_enhance_pptx.py init <source.pptx> [--name project_name]
+    python3 scripts/native_enhance_pptx.py init <source.pptx> [--name project_name] [--references PATH...]
     python3 scripts/native_enhance_pptx.py apply <project_path> [--output output.pptx]
     python3 scripts/native_enhance_pptx.py validate <project_path>
 
 Examples:
     python3 scripts/native_enhance_pptx.py init projects/source.pptx --name fire_station
+    python3 scripts/native_enhance_pptx.py init projects/source.pptx --name fire_station \
+        --references projects/bg.pdf projects/notes.docx
     python3 scripts/native_enhance_pptx.py apply projects/fire_station_native_enhance_20260626
     python3 scripts/native_enhance_pptx.py validate projects/fire_station_native_enhance_20260626
 
@@ -40,9 +42,17 @@ from xml.etree import ElementTree as ET
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
+_SOURCE_TO_MD_DIR = _SCRIPTS_DIR / "source_to_md"
+if str(_SOURCE_TO_MD_DIR) not in sys.path:
+    sys.path.insert(0, str(_SOURCE_TO_MD_DIR))
 
 from console_encoding import configure_utf8_stdio  # noqa: E402
 from pptx_animations import TRANSITIONS, create_transition_xml  # noqa: E402
+from _dispatcher import (  # noqa: E402
+    build_conversion_command,
+    detect_source_type,
+    is_url,
+)
 from svg_to_pptx.pptx_package.builder import (  # noqa: E402
     _add_default_content_type,
     _append_relationship,
@@ -125,6 +135,127 @@ def _archive_source_pptx(source_pptx: Path, archived_pptx: Path, projects_root: 
         return "move"
     shutil.copy2(source_pptx, archived_pptx)
     return "copy"
+
+
+def _archive_and_convert_reference(
+    ref_input: str,
+    references_dir: Path,
+    projects_root: Path,
+) -> dict:
+    """Archive one reference (move if in projects_root, copy otherwise) and convert non-MD to MD.
+
+    Returns a dict record. Never raises — conversion failures are captured into
+    `conversion_error` and `markdown_path` is set to None.
+    """
+    references_dir.mkdir(parents=True, exist_ok=True)
+
+    if is_url(ref_input):
+        slug = _sanitize_slug(ref_input)[-60:] or "web_ref"
+        md_target = references_dir / f"{slug}.md"
+        try:
+            route = build_conversion_command(ref_input, md_target, forced_type="web")
+            result = subprocess.run(
+                route.command,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            if result.returncode != 0:
+                return {
+                    "original_path": ref_input,
+                    "source_path": None,
+                    "markdown_path": None,
+                    "import_mode": "url",
+                    "conversion_error": (result.stderr or result.stdout or "").strip()[:500],
+                }
+        except Exception as exc:
+            return {
+                "original_path": ref_input,
+                "source_path": None,
+                "markdown_path": None,
+                "import_mode": "url",
+                "conversion_error": str(exc)[:500],
+            }
+        return {
+            "original_path": ref_input,
+            "source_path": None,
+            "markdown_path": f"references/{md_target.name}",
+            "import_mode": "url",
+        }
+
+    ref_path = Path(ref_input).expanduser().resolve()
+    if not ref_path.exists():
+        print(f"warning: reference not found, skipped: {ref_path}", file=sys.stderr)
+        return {
+            "original_path": str(ref_path),
+            "source_path": None,
+            "markdown_path": None,
+            "import_mode": "missing",
+            "conversion_error": f"file not found: {ref_path}",
+        }
+
+    archived = references_dir / ref_path.name
+    if ref_path.resolve() == archived.resolve():
+        import_mode = "reuse"
+    elif _is_relative_to(ref_path, projects_root):
+        shutil.move(str(ref_path), str(archived))
+        import_mode = "move"
+    else:
+        shutil.copy2(ref_path, archived)
+        import_mode = "copy"
+
+    src_type = detect_source_type(str(archived))
+
+    if src_type in {"markdown", "text"}:
+        return {
+            "original_path": str(ref_path),
+            "source_path": f"references/{archived.name}",
+            "markdown_path": f"references/{archived.name}",
+            "import_mode": import_mode,
+        }
+
+    md_target = references_dir / f"{archived.stem}.md"
+    try:
+        route = build_conversion_command(str(archived), md_target)
+    except ValueError as exc:
+        print(
+            f"warning: unsupported reference type '{src_type}', skipped conversion: {archived.name}",
+            file=sys.stderr,
+        )
+        return {
+            "original_path": str(ref_path),
+            "source_path": f"references/{archived.name}",
+            "markdown_path": None,
+            "import_mode": import_mode,
+            "conversion_error": f"unsupported type {src_type!r}: {exc}",
+        }
+
+    result = subprocess.run(
+        route.command,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        print(
+            f"warning: reference conversion failed for {archived.name}: "
+            f"{(result.stderr or result.stdout or '').strip()[:200]}",
+            file=sys.stderr,
+        )
+        return {
+            "original_path": str(ref_path),
+            "source_path": f"references/{archived.name}",
+            "markdown_path": None,
+            "import_mode": import_mode,
+            "conversion_error": (result.stderr or result.stdout or "").strip()[:500],
+        }
+
+    return {
+        "original_path": str(ref_path),
+        "source_path": f"references/{archived.name}",
+        "markdown_path": f"references/{md_target.name}",
+        "import_mode": import_mode,
+    }
 
 
 def _relationship_file_for_part(extract_dir: Path, part_name: str) -> Path:
@@ -455,7 +586,9 @@ def _build_enhancement_plan(
     transition_duration: float,
     narration_padding: float,
     apply_transition_without_audio: bool,
+    references: list[dict] | None = None,
 ) -> dict:
+    references = references if references is not None else project.get("references", [])
     return {
         "schema": "native_pptx_enhancement_plan.v1",
         "status": "draft",
@@ -490,6 +623,13 @@ def _build_enhancement_plan(
                 "apply_without_audio": apply_transition_without_audio,
             },
         },
+        "references": {
+            "count": len(references),
+            "declared": [r.get("source_path") for r in references],
+            "markdown_present": [
+                r.get("markdown_path") for r in references if r.get("markdown_path")
+            ],
+        },
         "not_in_v1": [
             "object_animation",
             "visible_watermark",
@@ -517,7 +657,7 @@ def init_project(args: argparse.Namespace) -> int:
         print(f"error: project directory already exists and is not empty: {project_path}", file=sys.stderr)
         return 1
 
-    for dirname in ("sources", "analysis", "notes", "audio", "exports", "validation"):
+    for dirname in ("sources", "analysis", "notes", "audio", "exports", "validation", "references"):
         (project_path / dirname).mkdir(parents=True, exist_ok=True)
 
     archived_pptx = project_path / "sources" / source_pptx.name
@@ -535,6 +675,12 @@ def init_project(args: argparse.Namespace) -> int:
     if result.returncode != 0:
         print(result.stderr or result.stdout, file=sys.stderr)
         return result.returncode
+
+    references_dir = project_path / "references"
+    references_list = [
+        _archive_and_convert_reference(ref, references_dir, projects_root)
+        for ref in (args.references or [])
+    ]
 
     with tempfile.TemporaryDirectory(prefix="native-enhance-intake-") as tmp:
         extract_dir = Path(tmp) / "pptx"
@@ -572,6 +718,8 @@ def init_project(args: argparse.Namespace) -> int:
         "notes_dir": "notes",
         "audio_dir": "audio",
         "exports_dir": "exports",
+        "references_dir": "references",
+        "references": references_list,
         "transition": {
             "effect": args.transition,
             "duration": args.transition_duration,
@@ -592,6 +740,7 @@ def init_project(args: argparse.Namespace) -> int:
         transition_duration=args.transition_duration,
         narration_padding=args.narration_padding,
         apply_transition_without_audio=args.apply_transition_without_audio,
+        references=references_list,
     )
     _write_json(_plan_path(project_path), plan)
 
@@ -599,6 +748,12 @@ def init_project(args: argparse.Namespace) -> int:
     print(f"Slides: {len(slide_parts)}", file=sys.stderr)
     print(f"Source import: {source_import_mode}", file=sys.stderr)
     print(f"Source markdown: {source_md}", file=sys.stderr)
+    if references_list:
+        converted = sum(1 for r in references_list if r.get("markdown_path"))
+        print(
+            f"References: {len(references_list)} declared, {converted} markdown ready",
+            file=sys.stderr,
+        )
     print(f"Draft enhancement plan: {_plan_path(project_path)}", file=sys.stderr)
     print(
         "Review the plan with the user and set status to \"confirmed\" before generating notes/audio/applying.",
@@ -631,6 +786,7 @@ def plan_project(args: argparse.Namespace) -> int:
         transition_duration=args.transition_duration,
         narration_padding=args.narration_padding,
         apply_transition_without_audio=args.apply_transition_without_audio,
+        references=project.get("references", []),
     )
     _write_json(_plan_path(project_path), plan)
     print(json.dumps(plan, ensure_ascii=False, indent=2))
@@ -781,6 +937,17 @@ def validate_project(args: argparse.Namespace) -> int:
         if "audio" in modules
         else []
     )
+    references = project.get("references", []) if isinstance(project.get("references"), list) else []
+    missing_references: list[str] = []
+    for r in references:
+        if not isinstance(r, dict):
+            continue
+        source_rel = r.get("source_path")
+        if source_rel and not (project_path / source_rel).exists():
+            missing_references.append(source_rel)
+        md_rel = r.get("markdown_path")
+        if md_rel and not (project_path / md_rel).exists():
+            missing_references.append(md_rel)
     report = {
         "schema": "native_pptx_enhancement_validation.v1",
         "slide_count": len(slides),
@@ -792,12 +959,14 @@ def validate_project(args: argparse.Namespace) -> int:
         "audio_count": audio_count,
         "missing_notes": missing_notes,
         "missing_audio": missing_audio,
+        "references_declared": len(references),
+        "missing_references": missing_references,
     }
     validation_dir = project_path / "validation"
     validation_dir.mkdir(exist_ok=True)
     _write_json(validation_dir / "report.json", report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if not missing_notes and not missing_audio else 2
+    return 0 if not missing_notes and not missing_audio and not missing_references else 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -819,6 +988,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--apply-transition-without-audio",
         action="store_true",
         help="draft the plan with page transitions for slides without audio",
+    )
+    init.add_argument(
+        "--references",
+        nargs="+",
+        default=[],
+        metavar="PATH",
+        help="optional reference materials (PDF/DOCX/XLSX/EPUB/HTML/URL/MD/TXT) "
+        "archived into references/ and used as context when generating notes; "
+        "non-Markdown files are auto-converted to a sibling .md",
     )
     init.set_defaults(func=init_project)
 
