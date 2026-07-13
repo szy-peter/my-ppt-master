@@ -26,7 +26,7 @@ The user **explicitly asks** to refine / review / revise the spec before generat
 
 ## Step 1: Produce the full spec
 
-Run the default Strategist output exactly as SKILL.md Step 4 specifies: write `design_spec.md` (§I–XI) and `spec_lock.md`. Read the relevant `sources/` files so the content outline (`§IX`) carries real facts, not skeleton points. Nothing special here — this is the normal spec, just produced under the knowledge that the user is about to review it.
+Run the default Strategist output exactly as SKILL.md Step 4 specifies: write `design_spec.md` (§I–X) and `spec_lock.md`. Read the relevant `sources/` files so the content outline (`§IX`) carries real facts, not skeleton points. Nothing special here — this is the normal spec, just produced under the knowledge that the user is about to review it.
 
 ---
 
@@ -48,6 +48,8 @@ The user may revise **any part of the spec**, not just the outline — content o
 These overlap with what the locked `mode`, visual style, and §6.1 already shape — treat them as discussion angles to surface what is worth talking about, not a second pass to redo.
 
 **Keep both files in sync on every change.** Any revision the user approves must land in both `design_spec.md` and `spec_lock.md`; on divergence `spec_lock.md` wins (see [`strategist.md`](../references/strategist.md) §6.2). Iterate as many rounds as the user wants. The loop ends only when the user explicitly approves the spec.
+
+**Re-run the structured-template preflight after structural revisions.** If the user changes `template_adherence`, `page_layouts`, the Master roster, or any page Layout choice, repeat the Strategist preflight in [`strategist.md`](../references/strategist.md) §6.2 before approval and hand-back. Every newly selected prototype must declare root Master/Layout identity, direct atomic Master/Layout visuals, and valid top-level slot groups with positive bounds plus one compatible carrier or explicit composite `object` proxy. A zero-slot Layout is valid. Update `pptx_masters` and the complete per-page `pptx_layouts` mapping in both artifacts immediately. A legacy prototype must run [`restore-pptx-structure`](./restore-pptx-structure.md); do not create a fallback mode inside refinement.
 
 ---
 

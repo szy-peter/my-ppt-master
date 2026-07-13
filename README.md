@@ -13,7 +13,17 @@
 English | [中文](./README_CN.md)
 
 <details open>
-<summary>This project is kept free and open source with the support of <a href="https://www.packyapi.com/register?aff=ppt-master">PackyCode</a>, <a href="https://apikey.fun/register?aff=PPT-MASTER">APIKEY.FUN</a>, <a href="https://runapi.co/register?aff=WMLJ">RunAPI</a>, <a href="https://www.compshare.cn/coding-plan?ytag=GPU_YY-git_pptmaster0624">YouYun ZhiSuan</a> and other sponsors.</summary>
+<summary>This project is kept free and open source with the support of <a href="https://www.kimi.com/code/?aff=ppt-master">Kimi</a>, <a href="https://www.packyapi.com/register?aff=ppt-master">PackyCode</a>, <a href="https://apikey.fun/register?aff=PPT-MASTER">APIKEY.FUN</a>, <a href="https://runapi.co/register?aff=WMLJ">RunAPI</a>, <a href="https://www.compshare.cn/coding-plan?ytag=GPU_YY-git_pptmaster0624">YouYun ZhiSuan</a> and other sponsors.</summary>
+
+<p align="center">
+  <a href="https://www.kimi.com/code/?aff=ppt-master"><img src="https://gcdn.moonshot.cn/growth-cdn/sponsor/kimi-en.png" alt="Kimi" width="100%"></a>
+</p>
+
+Thanks to [Kimi](https://www.kimi.com/code/?aff=ppt-master) for sponsoring this project! [Kimi K2.7](https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart) is an open-source agentic model developed by Moonshot AI. With PPT Master, Kimi can understand source materials such as PDFs, DOCX files, and web pages, identify key points, structure the narrative, and generate a natively editable PPTX that you can continue refining in PowerPoint.
+
+**Try [Kimi Code](https://www.kimi.com/code/?aff=ppt-master), or access the API through the Kimi Open Platform ([中文站](https://platform.kimi.com?aff=ppt-master) | [Global](https://platform.kimi.ai?aff=ppt-master)).**
+
+<hr>
 
 <table>
   <tr>
@@ -90,7 +100,7 @@ English | [中文](./README_CN.md)
 
 ---
 
-Drop in your source material, and the deck you get back is **more than just editable**: it has native slide transitions and entrance animations, speaker notes that can become audio narration, charts and tables that can ship as real data-backed PowerPoint objects, and it can follow your own PPT template — a complete deck you can present as-is and keep refining. How to use each capability → [Getting Started](./docs/getting-started.md).
+Drop in your source material, and the deck you get back is **more than just editable**: it has native slide transitions plus opt-in entrance animations (off by default), speaker notes that can become audio narration, charts and tables that can ship as real data-backed PowerPoint objects, and it can follow your own PPT template — a complete deck you can present as-is and keep refining. How to use each capability → [Getting Started](./docs/getting-started.md).
 
 ## Product Positioning
 
@@ -232,11 +242,7 @@ Never used one of these? Don't worry — in this project they play exactly one r
 
 ### 3. Set Up
 
-**Option A — Download ZIP** (no Git required; best for a quick trial): click **Code → Download ZIP** on the [GitHub page](https://github.com/hugohe3/ppt-master), then unzip.
-
-If you plan to keep using PPT Master and update it over time, use Git clone instead.
-
-**Option B — Git clone** (recommended; requires [Git](https://git-scm.com/downloads) installed):
+**Option A — Git clone** (recommended; requires [Git](https://git-scm.com/downloads) installed): the preferred path, since a clone can pull the latest version at any time.
 
 ```bash
 git clone https://github.com/hugohe3/ppt-master.git
@@ -248,6 +254,8 @@ Then install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+**Option B — Download ZIP** (no Git required; best for a quick trial): click **Code → Download ZIP** on the [GitHub page](https://github.com/hugohe3/ppt-master), then unzip, and install dependencies with `pip install -r requirements.txt`. A ZIP has no Git history, so it can't `git pull` — see Updating Later. If that download is too large or fails, grab the skill-only package `ppt-master-skill-*.zip` (~50 MB, fully functional but without the bundled example decks) from the [Releases](https://github.com/hugohe3/ppt-master/releases) page instead.
 
 #### Updating Later
 
@@ -308,7 +316,7 @@ AI:  Sure. Let's confirm the design spec:
 
 The AI handles everything — content analysis, visual design, SVG generation, and PPTX export.
 
-> **Output:** Native-shapes `.pptx` (directly editable) saved to `exports/<name>_<timestamp>.pptx`. A copy of `svg_output/` is always snapshotted to `backup/<timestamp>/svg_output/` for re-export / archival. Pass `--svg-snapshot` to additionally emit an SVG-image preview pptx alongside the native pptx in `exports/` (see [FAQ](./docs/faq.md)). Requires Office 2016+. By default charts and tables export as SVG-derived shapes (pixel-consistent across PowerPoint / Keynote / WPS); pass `--native-objects` to instead emit them as **real editable PowerPoint chart / table objects backed by data** (rendering may vary across apps), saved as `exports/<name>_<timestamp>_native_charts.pptx`.
+> **Output:** The SVG pipeline has one PPTX export route: PPT Master's converter reads `svg_output/` and writes a directly editable native DrawingML deck to `exports/<name>_<timestamp>.pptx`. Step 7 still always runs `finalize_svg.py`, producing self-contained files in `svg_final/` for visual inspection or manual insertion as SVG pictures; PowerPoint's manual **Convert to Shape** command is outside the supported contract. A copy of `svg_output/` is always snapshotted to `backup/<timestamp>/svg_output/` for re-export / archival. By default charts and tables export as SVG-derived shapes (pixel-consistent across PowerPoint / Keynote / WPS); pass `--native-objects` to instead emit them as **real editable PowerPoint chart / table objects backed by data** (rendering may vary across apps), saved as `exports/<name>_<timestamp>_native_charts.pptx`.
 
 > **Already have a `.pptx` you want to reuse?** Hand the AI that deck plus your material and ask it to "fill this deck with the new content" — it fills text, table, and chart data into your existing design and exports only the pages you pick, staying natively editable. See the [FAQ](./docs/faq.md) and [template-fill workflow](./skills/ppt-master/workflows/template-fill-pptx.md).
 
@@ -399,6 +407,8 @@ PPT Master is currently built and maintained primarily by me. Every new template
 
 **Corporate sponsors**
 
+<a href="https://www.kimi.com/code/?aff=ppt-master"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/sponsors/kimi-dark.svg"><img src="docs/assets/sponsors/kimi-light.svg" alt="Kimi" height="40" /></picture></a>
+&nbsp;
 <a href="https://www.packyapi.com/register?aff=ppt-master"><img src="docs/assets/sponsors/packycode.png" alt="PackyCode" height="40" /></a>
 &nbsp;
 <a href="https://apikey.fun/register?aff=PPT-MASTER"><img src="docs/assets/sponsors/apikey-fun.png" alt="APIKEY.FUN" height="40" /></a>

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import re
+import colorsys
 import math
+import re
 from xml.etree import ElementTree as ET
+
+from pptx_shapes import validate_ooxml_xfrm
 
 from .context import AffineMatrix, ConvertContext, IDENTITY_MATRIX
 
@@ -22,7 +25,7 @@ ANGLE_UNIT = 60000  # DrawingML angle: 60000ths of a degree
 # SVG attributes inheritable from parent <g>
 INHERITABLE_ATTRS = [
     'fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap',
-    'stroke-linejoin', 'opacity', 'fill-opacity', 'stroke-opacity',
+    'stroke-linejoin', 'fill-opacity', 'stroke-opacity',
     'font-family', 'font-size', 'font-weight', 'font-style',
     'text-anchor', 'letter-spacing', 'text-decoration',
 ]
@@ -145,6 +148,11 @@ def px_to_emu(px: float) -> int:
     return round(px * EMU_PER_PX)
 
 
+def font_px_to_hpt(font_size_px: float) -> int:
+    """Convert SVG px to DrawingML hundredths-of-a-point at 0.1pt precision."""
+    return int(round(font_size_px * FONT_PX_TO_HUNDREDTHS_PT / 10.0)) * 10
+
+
 def _f(val: str | None, default: float = 0.0) -> float:
     """Parse a float attribute value, returning default if missing."""
     if val is None:
@@ -258,31 +266,68 @@ def _rotate_matrix(angle_deg: float, cx: float | None = None, cy: float | None =
     )
 
 
+def _skew_matrix(angle_deg: float, *, x_axis: bool) -> AffineMatrix:
+    radians = math.radians(angle_deg)
+    if abs(math.cos(radians)) <= 1e-12:
+        raise ValueError(f'Invalid SVG skew angle {angle_deg!r}')
+    tangent = math.tan(radians)
+    if x_axis:
+        return (1.0, 0.0, tangent, 1.0, 0.0, 0.0)
+    return (1.0, tangent, 0.0, 1.0, 0.0, 0.0)
+
+
 def parse_transform_matrix(transform_str: str) -> AffineMatrix:
-    """Parse an SVG transform list into one affine matrix."""
+    """Parse a complete SVG transform list into one affine matrix.
+
+    Unsupported or malformed operations fail closed.  Treating an unknown
+    operation as the identity would silently discard a visible SVG edit.
+    """
     if not transform_str:
         return IDENTITY_MATRIX
 
     matrix = IDENTITY_MATRIX
-    for name, raw_args in _TRANSFORM_RE.findall(transform_str):
+    cursor = 0
+    matched = False
+    for match in _TRANSFORM_RE.finditer(transform_str):
+        if re.fullmatch(r'[\s,]*', transform_str[cursor:match.start()]) is None:
+            raise ValueError(f'Invalid SVG transform syntax {transform_str!r}')
+        matched = True
+        name, raw_args = match.groups()
+        if re.fullmatch(r'(?:[\s,]*' + _NUMBER_RE.pattern + r')*[\s,]*', raw_args) is None:
+            raise ValueError(f'Invalid arguments for SVG transform {name!r}')
         args = [float(n) for n in _NUMBER_RE.findall(raw_args)]
+        if not all(math.isfinite(value) for value in args):
+            raise ValueError(f'Non-finite arguments for SVG transform {name!r}')
         name = name.lower()
-        local = IDENTITY_MATRIX
-
-        if name == 'matrix' and len(args) >= 6:
+        if name == 'matrix' and len(args) == 6:
             local = (args[0], args[1], args[2], args[3], args[4], args[5])
-        elif name == 'translate' and args:
+        elif name == 'translate' and len(args) in {1, 2}:
             local = _translate_matrix(args[0], args[1] if len(args) > 1 else 0.0)
-        elif name == 'scale' and args:
+        elif name == 'scale' and len(args) in {1, 2}:
             local = _scale_matrix(args[0], args[1] if len(args) > 1 else None)
-        elif name == 'rotate' and args:
+        elif name == 'rotate' and len(args) in {1, 3}:
             local = _rotate_matrix(
                 args[0],
                 args[1] if len(args) > 2 else None,
                 args[2] if len(args) > 2 else None,
             )
+        elif name == 'skewx' and len(args) == 1:
+            local = _skew_matrix(args[0], x_axis=True)
+        elif name == 'skewy' and len(args) == 1:
+            local = _skew_matrix(args[0], x_axis=False)
+        else:
+            raise ValueError(
+                f'Unsupported or malformed SVG transform {match.group(0)!r}'
+            )
 
         matrix = matrix_multiply(matrix, local)
+        cursor = match.end()
+
+    if (
+        not matched
+        or re.fullmatch(r'[\s,]*', transform_str[cursor:]) is None
+    ):
+        raise ValueError(f'Invalid SVG transform syntax {transform_str!r}')
 
     return matrix
 
@@ -293,12 +338,32 @@ def transform_point(matrix: AffineMatrix, x: float, y: float) -> tuple[float, fl
     return a * x + c * y + e, b * x + d * y + f
 
 
+def validate_dml_shape_matrix(matrix: AffineMatrix) -> None:
+    """Reject affine shear that a DrawingML shape transform cannot express."""
+    a, b, c, d, _e, _f = matrix
+    x_length = math.hypot(a, b)
+    y_length = math.hypot(c, d)
+    if x_length <= 1e-12 or y_length <= 1e-12:
+        raise ValueError(
+            'SVG zero-scale transform cannot be represented by a visible '
+            'DrawingML shape'
+        )
+    dot = a * c + b * d
+    if abs(dot) > x_length * y_length * 1e-9:
+        raise ValueError(
+            'SVG shear/skew cannot be represented by a DrawingML '
+            'shape transform'
+        )
+
+
 def rect_to_dml_xfrm(
     x: float,
     y: float,
     w: float,
     h: float,
     matrix: AffineMatrix,
+    *,
+    preserve_degenerate_axes: bool = False,
 ) -> tuple[str, int, int, int, int, tuple[int, int, int, int]]:
     """Map a transformed SVG rectangle to DrawingML xfrm attributes.
 
@@ -316,11 +381,18 @@ def rect_to_dml_xfrm(
     vx = p3[0] - p0[0]
     vy = p3[1] - p0[1]
 
-    rect_w = max(math.hypot(ux, uy), 0.001)
-    rect_h = max(math.hypot(vx, vy), 0.001)
+    rect_w = math.hypot(ux, uy)
+    rect_h = math.hypot(vx, vy)
+    validate_dml_shape_matrix(matrix)
+    if not preserve_degenerate_axes:
+        rect_w = max(rect_w, 0.001)
+        rect_h = max(rect_h, 0.001)
     cross = ux * vy - uy * vx
 
-    if cross < 0:
+    if rect_w <= 1e-12 and rect_h > 1e-12:
+        angle_deg = math.degrees(math.atan2(vy, vx)) - 90.0
+        flip_attr = ''
+    elif cross < 0:
         angle_deg = math.degrees(math.atan2(-uy, -ux))
         flip_attr = ' flipH="1"'
     else:
@@ -336,6 +408,7 @@ def rect_to_dml_xfrm(
     off_y = px_to_emu(center_y - rect_h / 2)
     ext_cx = px_to_emu(rect_w)
     ext_cy = px_to_emu(rect_h)
+    validate_ooxml_xfrm(off_x, off_y, ext_cx, ext_cy)
 
     xs = [p0[0], p1[0], p2[0], p3[0]]
     ys = [p0[1], p1[1], p2[1], p3[1]]
@@ -447,41 +520,146 @@ def parse_inline_style(style_str: str | None) -> dict[str, str]:
     return styles
 
 
+def _finite_float(raw: str) -> float:
+    """Parse a finite floating-point number."""
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError(f'Non-finite numeric value: {raw}')
+    return value
+
+
 def _parse_color_channel(raw: str) -> int:
     raw = raw.strip()
     if raw.endswith('%'):
-        value = float(raw[:-1]) * 255.0 / 100.0
+        value = _finite_float(raw[:-1]) * 255.0 / 100.0
     else:
-        value = float(raw)
+        value = _finite_float(raw)
     return max(0, min(255, int(round(value))))
 
 
-def parse_hex_color(color_str: str) -> str | None:
-    """Parse SVG color values to 'RRGGBB'. Returns None on failure."""
+def _parse_alpha_channel(raw: str) -> float:
+    """Parse a CSS alpha channel as a clamped ``0..1`` ratio."""
+    raw = raw.strip()
+    value = (
+        _finite_float(raw[:-1]) / 100.0
+        if raw.endswith('%')
+        else _finite_float(raw)
+    )
+    return max(0.0, min(1.0, value))
+
+
+def parse_opacity(raw: str | None, default: float = 1.0) -> float:
+    """Parse a number or percentage opacity, falling back to ``default``."""
+    if raw is None:
+        return max(0.0, min(1.0, default))
+    try:
+        return _parse_alpha_channel(raw)
+    except ValueError:
+        return max(0.0, min(1.0, default))
+
+
+def _functional_color_parts(body: str) -> tuple[list[str], str | None]:
+    """Split legacy comma or modern space/slash functional color syntax."""
+    before, separator, after = body.partition('/')
+    parts = [part for part in re.split(r'[\s,]+', before.strip()) if part]
+    alpha = after.strip() if separator else None
+    if alpha is None and len(parts) > 3:
+        alpha = parts.pop()
+    return parts, alpha
+
+
+def _parse_hue_degrees(raw: str) -> float:
+    """Normalize a CSS hue angle to degrees."""
+    value = raw.strip().lower()
+    for suffix, multiplier in (
+        ('turn', 360.0),
+        ('grad', 0.9),
+        ('rad', 180.0 / math.pi),
+        ('deg', 1.0),
+    ):
+        if value.endswith(suffix):
+            return _finite_float(value[:-len(suffix)]) * multiplier
+    return _finite_float(value)
+
+
+def _parse_percentage(raw: str) -> float:
+    """Parse a CSS percentage channel as a clamped ``0..1`` ratio."""
+    value = raw.strip()
+    ratio = (
+        _finite_float(value[:-1]) / 100.0
+        if value.endswith('%')
+        else _finite_float(value) / 100.0
+    )
+    return max(0.0, min(1.0, ratio))
+
+
+def parse_svg_color(color_str: str) -> tuple[str | None, float]:
+    """Parse an SVG/CSS color into ``(RRGGBB, alpha)``."""
     if not color_str:
-        return None
+        return None, 1.0
     color_str = color_str.strip()
     named = _CSS_NAMED_COLORS.get(color_str.lower())
     if named is not None or color_str.lower() in _CSS_NAMED_COLORS:
-        return named
+        if color_str.lower() == 'transparent':
+            return '000000', 0.0
+        return named, 1.0
 
     rgb_match = re.match(r'rgba?\((.+)\)$', color_str, flags=re.IGNORECASE)
     if rgb_match:
-        channels = re.findall(r'[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?%?', rgb_match.group(1))
-        if len(channels) >= 3:
+        channels, alpha_raw = _functional_color_parts(rgb_match.group(1))
+        if len(channels) == 3:
             try:
-                r, g, b = (_parse_color_channel(ch) for ch in channels[:3])
-                return f'{r:02X}{g:02X}{b:02X}'
+                r, g, b = (_parse_color_channel(ch) for ch in channels)
+                alpha = _parse_alpha_channel(alpha_raw) if alpha_raw is not None else 1.0
+                return f'{r:02X}{g:02X}{b:02X}', alpha
             except ValueError:
-                return None
+                return None, 1.0
+
+    hsl_match = re.match(r'hsla?\((.+)\)$', color_str, flags=re.IGNORECASE)
+    if hsl_match:
+        channels, alpha_raw = _functional_color_parts(hsl_match.group(1))
+        if len(channels) == 3:
+            try:
+                hue = (_parse_hue_degrees(channels[0]) % 360.0) / 360.0
+                saturation = _parse_percentage(channels[1])
+                lightness = _parse_percentage(channels[2])
+                red, green, blue = colorsys.hls_to_rgb(hue, lightness, saturation)
+                alpha = _parse_alpha_channel(alpha_raw) if alpha_raw is not None else 1.0
+                return (
+                    f'{round(red * 255):02X}{round(green * 255):02X}{round(blue * 255):02X}',
+                    alpha,
+                )
+            except ValueError:
+                return None, 1.0
 
     if color_str.startswith('#'):
         color_str = color_str[1:]
     if len(color_str) == 3:
         color_str = ''.join(c * 2 for c in color_str)
+    elif len(color_str) == 4:
+        color_str = ''.join(c * 2 for c in color_str)
+    if len(color_str) == 8 and all(c in '0123456789abcdefABCDEF' for c in color_str):
+        return color_str[:6].upper(), int(color_str[6:], 16) / 255.0
     if len(color_str) == 6 and all(c in '0123456789abcdefABCDEF' for c in color_str):
-        return color_str.upper()
-    return None
+        return color_str.upper(), 1.0
+    return None, 1.0
+
+
+def parse_hex_color(color_str: str) -> str | None:
+    """Parse SVG color values to ``RRGGBB``, ignoring any alpha channel."""
+    if color_str and color_str.strip().lower() == 'transparent':
+        return None
+    color, _alpha = parse_svg_color(color_str)
+    return color
+
+
+def combine_opacity(*values: float | None) -> float | None:
+    """Multiply opacity components, returning ``None`` when fully opaque."""
+    combined = 1.0
+    for value in values:
+        if value is not None:
+            combined *= max(0.0, min(1.0, value))
+    return combined if combined < 1.0 else None
 
 
 def parse_stop_style(style_str: str) -> tuple[str | None, float]:
@@ -494,21 +672,18 @@ def parse_stop_style(style_str: str) -> tuple[str | None, float]:
         (color, opacity) tuple.
     """
     color = None
-    opacity = 1.0
-    if not style_str:
-        return color, opacity
+    color_alpha = 1.0
+    stop_opacity = 1.0
+    style_values = parse_inline_style(style_str)
+    if not style_values:
+        return color, stop_opacity
 
-    for part in style_str.split(';'):
-        part = part.strip()
-        if part.startswith('stop-color:'):
-            color = parse_hex_color(part.split(':', 1)[1].strip())
-        elif part.startswith('stop-opacity:'):
-            try:
-                opacity = float(part.split(':', 1)[1].strip())
-            except ValueError:
-                pass
+    if 'stop-color' in style_values:
+        color, color_alpha = parse_svg_color(style_values['stop-color'])
+    if 'stop-opacity' in style_values:
+        stop_opacity = parse_opacity(style_values['stop-opacity'])
 
-    return color, opacity
+    return color, color_alpha * stop_opacity
 
 
 def resolve_url_id(url_str: str) -> str | None:
