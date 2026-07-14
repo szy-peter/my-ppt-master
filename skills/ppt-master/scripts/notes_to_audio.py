@@ -10,6 +10,7 @@ Usage:
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider minimax --voice-id <voice_id>
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider qwen --voice-id <voice>
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider cosyvoice --voice-id <voice>
+    python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider sherpa --voice 0
     python3 skills/ppt-master/scripts/notes_to_audio.py --list-common-voices
     python3 skills/ppt-master/scripts/notes_to_audio.py --list-voices --locale zh-CN
 
@@ -19,6 +20,7 @@ Dependencies:
     MINIMAX_API_KEY=<key> for --provider minimax
     QWEN_API_KEY or DASHSCOPE_API_KEY=<key> for --provider qwen
     COSYVOICE_API_KEY or DASHSCOPE_API_KEY=<key> for --provider cosyvoice
+    SHERPA_TTS_MODEL_DIR=<dir> for --provider sherpa (offline; needs sherpa-onnx)
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from tts_backends import (
     backend_elevenlabs,
     backend_minimax,
     backend_qwen,
+    backend_sherpa,
 )
 
 configure_utf8_stdio()
@@ -59,6 +62,7 @@ def _load_tts_env_file() -> None:
         "QWEN_",
         "DASHSCOPE_",
         "COSYVOICE_",
+        "SHERPA_TTS_",
     ))
 
 
@@ -88,7 +92,7 @@ def main() -> int:
     parser.add_argument("-o", "--output", type=Path, default=None)
     parser.add_argument(
         "--provider",
-        choices=["edge", "elevenlabs", "minimax", "qwen", "cosyvoice"],
+        choices=["edge", "elevenlabs", "minimax", "qwen", "cosyvoice", "sherpa"],
         default="edge",
         help="audio generation backend (default: edge)",
     )
@@ -200,6 +204,12 @@ def main() -> int:
                         help="optional CosyVoice instruction text for supported voices/models")
     parser.add_argument("--cosyvoice-language-hint", default=None,
                         help="optional CosyVoice language hint, e.g. zh, en, ja")
+    parser.add_argument(
+        "--sherpa-speed",
+        type=float,
+        default=1.0,
+        help="sherpa-onnx speaking speed multiplier (default: 1.0)",
+    )
     parser.add_argument("--list-common-voices", action="store_true", help="print a curated voice list and exit")
     parser.add_argument("--list-voices", action="store_true", help="query provider voices and exit")
     parser.add_argument("--locale", default=None, help='filter --list-voices by locale, e.g. "zh-CN"')
@@ -221,6 +231,8 @@ def main() -> int:
                 backend_qwen.print_voices()
             elif args.provider == "cosyvoice":
                 backend_cosyvoice.print_voices()
+            elif args.provider == "sherpa":
+                backend_sherpa.print_voices()
             else:
                 asyncio.run(backend_edge.print_voices(args.locale))
         except Exception as exc:
