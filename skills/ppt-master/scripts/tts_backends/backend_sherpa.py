@@ -1,15 +1,18 @@
-"""Local offline TTS backend (sherpa-onnx) for narration audio.
+"""Remote sherpa-onnx TTS backend for narration audio.
 
-Pure-offline synthesis: the user prepares a sherpa-onnx VITS model once and
-points SHERPA_TTS_MODEL_DIR at it. This module makes zero network calls.
+Calls an in-network HTTP server running ``sherpa_server.py`` (which loads the
+VITS model). This client module performs no local sherpa-onnx inference and
+needs no model on this machine — only ``SHERPA_TTS_SERVER_URL`` pointing at the
+server. Communication stays inside the intranet: no external network, no API
+key.
 """
 
 from __future__ import annotations
 
-import array
 import os
-import wave
 from pathlib import Path
+
+from tts_backends.backend_common import get_json, post_and_download
 
 
 def output_extension() -> str:
@@ -17,105 +20,52 @@ def output_extension() -> str:
     return ".wav"
 
 
-def read_sherpa_config() -> dict[str, Path]:
-    """Read model config from the environment. Fail fast if unconfigured."""
-    model_dir = os.environ.get("SHERPA_TTS_MODEL_DIR", "").strip()
-    if not model_dir:
+def read_sherpa_config() -> dict[str, str]:
+    """Read the inference-server URL from the environment. Fail fast if unset."""
+    url = os.environ.get("SHERPA_TTS_SERVER_URL", "").strip().rstrip("/")
+    if not url:
         raise RuntimeError(
-            "Set SHERPA_TTS_MODEL_DIR=<sherpa-onnx 模型目录>"
-            "（手动下载模型后解压到此目录，代码不做自动下载）"
+            "Set SHERPA_TTS_SERVER_URL=http://<内网ip>:<port>"
+            "（指向部署了 sherpa_server.py 的推理服务器）"
         )
-    path = Path(model_dir)
-    if not path.is_dir():
-        raise RuntimeError(f"SHERPA_TTS_MODEL_DIR 不是目录: {model_dir}")
-    return {"model_dir": path}
+    if not url.startswith(("http://", "https://")):
+        raise RuntimeError(
+            f"SHERPA_TTS_SERVER_URL 必须以 http:// 或 https:// 开头: {url}"
+        )
+    return {"server_url": url}
 
 
 def print_voices() -> None:
-    """Print the local speaker catalog. Offline models have no online list."""
-    print("sherpa-onnx speakers (本地模型 speaker id):")
-    print("ID   Note")
-    print("0    默认说话人（单说话人模型唯一可选）")
-    print("0..N 多说话人模型(如 aishell3)可选 0~N，取决于模型")
-
-
-def _require_sherpa_onnx():
-    """Import sherpa_onnx, soft-failing with install instructions (code-style §8)."""
+    """Print speaker info. Queries the server if reachable; else static fallback."""
     try:
-        import sherpa_onnx
-    except ImportError as exc:
-        raise RuntimeError(
-            "Missing dependency `sherpa-onnx`. Install it with: "
-            "python3 -m pip install sherpa-onnx"
-        ) from exc
-    return sherpa_onnx
-
-
-def _build_config(model_dir: Path):
-    """Build OfflineTtsConfig by probing the model dir for known files.
-
-    Probes model.onnx / model.int8.onnx, tokens.txt, and optional lexicon.txt
-    so the same code works across single/multi-speaker Chinese VITS models.
-    """
-    sherpa_onnx = _require_sherpa_onnx()
-
-    model_file = model_dir / "model.onnx"
-    if not model_file.exists():
-        model_file = model_dir / "model.int8.onnx"
-    if not model_file.exists():
-        raise RuntimeError(
-            f"未在 {model_dir} 找到 model.onnx 或 model.int8.onnx；"
-            "请从 k2-fsa/sherpa-onnx 模型仓库下载中文 VITS 模型，"
-            "解压到 SHERPA_TTS_MODEL_DIR 指向的目录"
-        )
-
-    tokens = model_dir / "tokens.txt"
-    if not tokens.exists():
-        raise RuntimeError(
-            f"未在 {model_dir} 找到 tokens.txt；请检查模型目录是否完整"
-        )
-
-    lexicon = model_dir / "lexicon.txt"
-    vits = sherpa_onnx.OfflineTtsVitsModelConfig(
-        model=str(model_file),
-        tokens=str(tokens),
-        lexicon=str(lexicon) if lexicon.exists() else "",
-    )
-    return sherpa_onnx.OfflineTtsConfig(
-        model=sherpa_onnx.OfflineTtsModelConfig(
-            vits=vits,
-            num_threads=1,
-            debug=False,
-            provider="cpu",
-        ),
-        max_num_sentences=2,
-    )
-
-
-def _get_tts():
-    """Lazily load OfflineTts and cache it as a function attribute.
-
-    The notes loop calls generate() per slide; without this cache each slide
-    would reload the model.
-    """
-    if not hasattr(_get_tts, "_tts"):
-        sherpa_onnx = _require_sherpa_onnx()
         cfg = read_sherpa_config()
-        _get_tts._tts = sherpa_onnx.OfflineTts(_build_config(cfg["model_dir"]))
-    return _get_tts._tts
+        info = get_json(f"{cfg['server_url']}/voices", timeout=10)
+        model = info.get("model_dir", "?")
+        arch = info.get("architecture", "?")
+        n = info.get("num_speakers")
+        sr = info.get("sample_rate")
+        upper = (n - 1) if isinstance(n, int) else "N-1"
+        print(f"sherpa server model: {model} ({arch})")
+        print(f"speakers: {n} @ {sr} Hz, speaker id range 0..{upper}")
+        hint = _voice_hint(model)
+        if hint:
+            print(hint)
+    except Exception:
+        print("sherpa-onnx speakers (未能连接服务器查询，使用静态说明):")
+        print("ID   Note")
+        print("0    默认说话人（单说话人模型唯一可选）")
+        print("0..N 多说话人模型可选 0~N-1，取决于服务端模型")
+        print("（确认 SHERPA_TTS_SERVER_URL 已配且 sherpa_server.py 正在运行）")
 
 
-def _write_wav(output_path: Path, samples, sample_rate: int) -> None:
-    """Write float32 samples as a mono int16 WAV using only the stdlib."""
-    data = array.array("h", (
-        max(-32768, min(32767, int(float(sample) * 32767)))
-        for sample in samples
-    ))
-    with wave.open(str(output_path), "wb") as writer:
-        writer.setnchannels(1)
-        writer.setsampwidth(2)
-        writer.setframerate(sample_rate)
-        writer.writeframes(data.tobytes())
+def _voice_hint(model_dir: str) -> str:
+    """Return a male/female sid-range hint for known kokoro models."""
+    name = (model_dir or "").lower()
+    if "kokoro-multi-lang-v1_1" in name:
+        return "中文女声 zf: sid 3-57；中文男声 zm: sid 58-102"
+    if "kokoro-multi-lang-v1_0" in name:
+        return "中文女声 zf / 中文男声 zm: sid 0-52（详见 sherpa-onnx 文档）"
+    return ""
 
 
 def generate(
@@ -126,9 +76,12 @@ def generate(
     speed: float = 1.0,
     **_,
 ) -> None:
-    """Synthesize one note into a WAV file."""
-    tts = _get_tts()
-    # voice_id 非数字时回退到 speaker 0：speaker 数量取决于具体模型，离线无法校验
+    """Synthesize one note via the remote sherpa server into a WAV file."""
+    cfg = read_sherpa_config()
+    # voice_id 非数字时回退到 speaker 0：speaker 数量取决于服务端模型，客户端无法校验
     sid = int(voice_id) if str(voice_id).isdigit() else 0
-    audio = tts.generate(text, sid=sid, speed=float(speed))
-    _write_wav(output_path, audio.samples, audio.sample_rate)
+    wav_bytes = post_and_download(
+        f"{cfg['server_url']}/tts",
+        payload={"text": text, "sid": sid, "speed": float(speed)},
+    )
+    Path(output_path).write_bytes(wav_bytes)

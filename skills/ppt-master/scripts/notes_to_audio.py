@@ -20,7 +20,7 @@ Dependencies:
     MINIMAX_API_KEY=<key> for --provider minimax
     QWEN_API_KEY or DASHSCOPE_API_KEY=<key> for --provider qwen
     COSYVOICE_API_KEY or DASHSCOPE_API_KEY=<key> for --provider cosyvoice
-    SHERPA_TTS_MODEL_DIR=<dir> for --provider sherpa (offline; needs sherpa-onnx)
+    SHERPA_TTS_SERVER_URL=http://<host>:<port> for --provider sherpa (in-network; sherpa_server.py)
 """
 
 from __future__ import annotations
@@ -298,7 +298,7 @@ def main() -> int:
         backend = AudioBackend(provider=args.provider, extension=extension, api_key=api_key, voice_id=voice_id)
     elif args.provider == "sherpa":
         try:
-            backend_sherpa.read_sherpa_config()  # fail fast: model dir configured?
+            backend_sherpa.read_sherpa_config()  # fail fast: SHERPA_TTS_SERVER_URL configured?
         except Exception as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1

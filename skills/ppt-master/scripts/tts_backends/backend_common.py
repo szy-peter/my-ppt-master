@@ -45,6 +45,36 @@ def post_json(url: str, *, headers: dict[str, str], payload: dict, timeout: int 
         raise RuntimeError(f"HTTP request failed: {exc.reason}") from exc
 
 
+def post_and_download(url: str, *, payload: dict, timeout: int = 180) -> bytes:
+    """POST a JSON body and return the raw response bytes (e.g. audio)."""
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=timeout) as response:
+            return response.read()
+    except error.HTTPError as exc:
+        raise RuntimeError(read_http_error(exc)) from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"TTS server request failed: {exc.reason}") from exc
+
+
+def get_json(url: str, *, headers: dict[str, str] | None = None, timeout: int = 30) -> dict:
+    """GET a URL and return the JSON response body as a dict."""
+    req = request.Request(url, headers=headers or {}, method="GET")
+    try:
+        with request.urlopen(req, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        raise RuntimeError(read_http_error(exc)) from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"HTTP request failed: {exc.reason}") from exc
+
+
 def get_bytes(url: str, *, timeout: int = 180) -> bytes:
     req = request.Request(url, method="GET")
     try:
