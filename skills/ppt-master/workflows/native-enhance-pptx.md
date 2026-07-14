@@ -225,6 +225,14 @@ For edge voices:
 python3 skills/ppt-master/scripts/notes_to_audio.py --list-voices --locale <locale>
 ```
 
+For offline sherpa voices:
+
+```bash
+python3 skills/ppt-master/scripts/notes_to_audio.py --provider sherpa --list-voices
+```
+
+sherpa voices are local speaker IDs (offline; no online catalog); use `0` for single-speaker Chinese VITS models.
+
 **⛔ BLOCKING**: Stop here and wait for explicit user confirmation of audio backend, voice, rate/settings, and embedding. Do not run `notes_to_audio.py` before this confirmation.
 
 Record the confirmed audio config into `project.json`:
@@ -250,6 +258,13 @@ Run with the confirmed values:
 ```bash
 python3 skills/ppt-master/scripts/notes_to_audio.py "<project>" \
   --voice <chosen-ShortName> --rate <chosen-rate>
+```
+
+For the offline sherpa backend:
+
+```bash
+python3 skills/ppt-master/scripts/notes_to_audio.py "<project>" \
+  --provider sherpa --voice 0 --sherpa-speed 1.0
 ```
 
 **Default — edge (may override)**: Use `edge` unless the user requests a cloud provider or supplies a cloned voice ID.
