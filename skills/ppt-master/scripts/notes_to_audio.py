@@ -253,7 +253,7 @@ def main() -> int:
         )
         raise AssertionError("unreachable")
 
-    if args.provider != "edge" and not voice_id:
+    if args.provider not in ("edge", "sherpa") and not voice_id:
         parser.error(f"--voice-id is required for --provider {args.provider}")
         raise AssertionError("unreachable")
 
@@ -296,6 +296,17 @@ def main() -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         backend = AudioBackend(provider=args.provider, extension=extension, api_key=api_key, voice_id=voice_id)
+    elif args.provider == "sherpa":
+        try:
+            backend_sherpa.read_sherpa_config()  # fail fast: model dir configured?
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        backend = AudioBackend(
+            provider=args.provider,
+            extension=backend_sherpa.output_extension(),
+            voice_id=voice_id or "0",
+        )
     else:
         backend = AudioBackend(provider=args.provider, extension=backend_edge.edge_output_extension(), voice_id=args.voice)
 
@@ -377,6 +388,13 @@ def main() -> int:
                     instruction=args.cosyvoice_instruction,
                     language_hint=args.cosyvoice_language_hint,
                     base_url=args.cosyvoice_base_url,
+                )
+            elif backend.provider == "sherpa":
+                backend_sherpa.generate(
+                    text,
+                    output_path,
+                    voice_id=backend.voice_id,
+                    speed=args.sherpa_speed,
                 )
             else:
                 asyncio.run(backend_edge.generate(text, output_path, voice=args.voice, rate=args.rate))
