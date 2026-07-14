@@ -12,6 +12,7 @@ This workflow is **independent**: it reads `notes/*.md` and queries the selected
 
 - `notes/total.md` exists and has been split into per-page files at `notes/*.md` (post-processing Step 7.1 done).
 - Default mode: `edge-tts` is installed (`python3 -m pip install edge-tts`).
+- Offline mode (`--provider sherpa`): install `sherpa-onnx` (`python3 -m pip install sherpa-onnx`) and manually place a Chinese VITS model in a directory, then set `SHERPA_TTS_MODEL_DIR` to that directory. The backend makes zero network calls; the model is not auto-downloaded.
 - The workflow is page-level only: one notes file becomes one audio file. Do not use a single long audio track or attempt automatic long-audio splitting.
 - PPT narration assets must be PowerPoint-reliable audio: `m4a` (AAC), `mp3`, or `wav`. The built-in TTS path defaults to `mp3`; provider formats such as `pcm`, `opus`, or `flac` must be transcoded before embedding.
 - PowerPoint recorded narration export requires `ffprobe` so slide timings can be written from actual audio duration.
@@ -39,7 +40,7 @@ The AI already knows the deck's language from writing the notes. No detection sc
 
 ## Step 2: Choose audio backend and pull the voice catalog
 
-Default to **edge** unless the user explicitly asks for a cloud provider / higher-quality cloud narration / a cloned voice.
+Default to **edge** unless the user explicitly asks for a cloud provider / higher-quality cloud narration / a cloned voice, or asks for **offline** synthesis (then use `--provider sherpa`, which needs `sherpa-onnx` installed and `SHERPA_TTS_MODEL_DIR` set).
 
 **edge backend**:
 
@@ -60,6 +61,14 @@ python3 skills/ppt-master/scripts/notes_to_audio.py --provider minimax --list-vo
 python3 skills/ppt-master/scripts/notes_to_audio.py --provider qwen --list-voices
 python3 skills/ppt-master/scripts/notes_to_audio.py --provider cosyvoice --list-voices
 ```
+
+**Offline sherpa backend**:
+
+```bash
+python3 skills/ppt-master/scripts/notes_to_audio.py --provider sherpa --list-voices
+```
+
+sherpa voices are local speaker IDs (offline; no online catalog). Recommend speaker `0` for single-speaker Chinese VITS models.
 
 The output is a flat list of all available voices for the selected provider. From this list, the AI picks **3–6 candidates** to recommend, applying these rules:
 
@@ -141,6 +150,10 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider cosyvoice --voice-id <chosen-voice> \
   --cosyvoice-model cosyvoice-v3-flash
+
+# 1F. Or generate audio offline with sherpa-onnx (no network, no API key)
+python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
+  --provider sherpa --voice 0 --sherpa-speed 1.0
 
 # 2. (If user kept embedding) Re-export PPTX with audio embedded
 python3 skills/ppt-master/scripts/svg_to_pptx.py <project_path> \
