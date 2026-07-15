@@ -2,15 +2,18 @@
 """Generate per-slide narration audio from PPT Master notes.
 
 This script uses provider backends for the same per-slide output contract on
-macOS, Linux, and Windows. `edge-tts` remains the default no-key backend.
+macOS, Linux, and Windows. The offline `sherpa` backend is the default
+(intranet inference server; no API key, no external network). `edge-tts`
+remains the no-key online fallback; cloud providers need API keys.
 
 Usage:
-    python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --voice zh-CN-XiaoxiaoNeural
+    python3 skills/ppt-master/scripts/notes_to_audio.py <project_path>                          # default: offline sherpa (sid 58, kokoro v1_1 中文男声)
+    python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider sherpa --voice 0
+    python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider edge --voice zh-CN-XiaoxiaoNeural
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider elevenlabs --voice-id <voice_id>
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider minimax --voice-id <voice_id>
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider qwen --voice-id <voice>
     python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider cosyvoice --voice-id <voice>
-    python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> --provider sherpa --voice 0
     python3 skills/ppt-master/scripts/notes_to_audio.py --list-common-voices
     python3 skills/ppt-master/scripts/notes_to_audio.py --list-voices --locale zh-CN
 
@@ -93,8 +96,8 @@ def main() -> int:
     parser.add_argument(
         "--provider",
         choices=["edge", "elevenlabs", "minimax", "qwen", "cosyvoice", "sherpa"],
-        default="edge",
-        help="audio generation backend (default: edge)",
+        default="sherpa",
+        help="audio generation backend (default: sherpa; offline/intranet)",
     )
     parser.add_argument(
         "--voice",
@@ -305,7 +308,7 @@ def main() -> int:
         backend = AudioBackend(
             provider=args.provider,
             extension=backend_sherpa.output_extension(),
-            voice_id=voice_id or "0",
+            voice_id=voice_id or "58",
         )
     else:
         backend = AudioBackend(provider=args.provider, extension=backend_edge.edge_output_extension(), voice_id=args.voice)

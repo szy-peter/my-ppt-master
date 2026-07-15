@@ -4,15 +4,15 @@ description: Generate per-slide narration audio with AI-recommended voice select
 
 # Generate Audio Workflow
 
-> Standalone post-export step. Run when the user asks for "生成音频" / "录制旁白" / "narrated PPT" / "video export with voice", or proactively offer it after a deck is exported. Produces one audio file per slide via `edge-tts` by default, or a cloud TTS provider (`elevenlabs` / `minimax` / `qwen` / `cosyvoice`) when the user chooses high-quality narration or a cloned voice, then optionally re-exports a video-ready PPTX with audio embedded and per-slide auto-advance timings.
+> Standalone post-export step. Run when the user asks for "生成音频" / "录制旁白" / "narrated PPT" / "video export with voice", or proactively offer it after a deck is exported. Produces one audio file per slide via the offline `sherpa` backend by default (intranet; needs `SHERPA_TTS_SERVER_URL`), or `edge-tts` / a cloud TTS provider (`elevenlabs` / `minimax` / `qwen` / `cosyvoice`) when the user chooses online or higher-quality narration or a cloned voice, then optionally re-exports a video-ready PPTX with audio embedded and per-slide auto-advance timings.
 
 This workflow is **independent**: it reads `notes/*.md` and queries the selected TTS voice catalog — no upstream conversation context required. Safe to invoke in a fresh session.
 
 ## When to Run
 
 - `notes/total.md` exists and has been split into per-page files at `notes/*.md` (post-processing Step 7.1 done).
-- Default mode: `edge-tts` is installed (`python3 -m pip install edge-tts`).
-- Intranet/offline mode (`--provider sherpa`): run the `sherpa_server.py` FastAPI service on an inference machine that holds a Chinese VITS model, then point the client at it via `SHERPA_TTS_SERVER_URL`. Server setup: `SHERPA_TTS_MODEL_DIR=<vits-zh dir> uvicorn sherpa_server:app --host 0.0.0.0 --port 8300` (server deps: `sherpa-onnx fastapi uvicorn pydantic`). The client needs only `SHERPA_TTS_SERVER_URL`; no local model, no external network, no API key.
+- Default mode (offline `sherpa`): run the `sherpa_server.py` FastAPI service on an inference machine that holds a Chinese VITS model, then point the client at it via `SHERPA_TTS_SERVER_URL`. Server setup: `SHERPA_TTS_MODEL_DIR=<vits-zh dir> uvicorn sherpa_server:app --host 0.0.0.0 --port 8300` (server deps: `sherpa-onnx fastapi uvicorn pydantic`). The client needs only `SHERPA_TTS_SERVER_URL`; no local model, no external network, no API key.
+- Online mode (`--provider edge`): `edge-tts` is installed (`python3 -m pip install edge-tts`).
 - The workflow is page-level only: one notes file becomes one audio file. Do not use a single long audio track or attempt automatic long-audio splitting.
 - PPT narration assets must be PowerPoint-reliable audio: `m4a` (AAC), `mp3`, or `wav`. The built-in TTS path defaults to `mp3`; provider formats such as `pcm`, `opus`, or `flac` must be transcoded before embedding.
 - PowerPoint recorded narration export requires `ffprobe` so slide timings can be written from actual audio duration.
@@ -40,7 +40,7 @@ The AI already knows the deck's language from writing the notes. No detection sc
 
 ## Step 2: Choose audio backend and pull the voice catalog
 
-Default to **edge** unless the user explicitly asks for a cloud provider / higher-quality cloud narration / a cloned voice, or asks for **offline/intranet** synthesis (then use `--provider sherpa`, which needs `SHERPA_TTS_SERVER_URL` pointing at a reachable `sherpa_server.py`).
+Default to **sherpa** (offline/intranet; needs `SHERPA_TTS_SERVER_URL` pointing at a reachable `sherpa_server.py`) unless the user explicitly asks for `edge-tts` (no-key online) or a cloud provider / higher-quality cloud narration / a cloned voice.
 
 **edge backend**:
 
