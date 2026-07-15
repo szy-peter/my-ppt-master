@@ -256,18 +256,19 @@ Record the confirmed audio config into `project.json`:
 Run with the confirmed values:
 
 ```bash
-python3 skills/ppt-master/scripts/notes_to_audio.py "<project>" \
-  --voice <chosen-ShortName> --rate <chosen-rate>
-```
-
-For the intranet sherpa backend:
-
-```bash
+# Default — offline sherpa (intranet; no API key, no external network)
 python3 skills/ppt-master/scripts/notes_to_audio.py "<project>" \
   --provider sherpa --voice 0 --sherpa-speed 1.0
 ```
 
-**Default — edge (may override)**: Use `edge` unless the user requests a cloud provider or supplies a cloned voice ID.
+For the online edge backend:
+
+```bash
+python3 skills/ppt-master/scripts/notes_to_audio.py "<project>" \
+  --provider edge --voice <chosen-ShortName> --rate <chosen-rate>
+```
+
+**Default — sherpa (may override)**: Use `sherpa` unless the user requests `edge` or a cloud provider, or supplies a cloned voice ID.
 
 **Naming contract**: Audio stems match note stems: `001.md` → `001.mp3`.
 

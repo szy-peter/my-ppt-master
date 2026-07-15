@@ -101,7 +101,7 @@ You: Generate narration for this deck and re-export with audio embedded.
 You: Generate narration audio for this deck
 ```
 
-Narration defaults to `edge-tts` (about 90 locales); optional cloud providers cover higher-quality voices. The AI recommends a voice for the deck's language and asks once before generating.
+Narration defaults to the offline `sherpa` backend (intranet; no API key); `edge-tts` (about 90 locales) and cloud providers cover online or higher-quality voices. The AI recommends a voice for the deck's language and asks once before generating.
 
 Full guide → [Audio Narration & Video Export](./audio-narration.md)
 

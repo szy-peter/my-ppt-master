@@ -114,9 +114,9 @@ Send a single message to the user that asks all three questions at once and prov
 > 直接回"好"用全部推荐值，或告诉我想改的部分（如"音色 2，语速 -5%"或"用 MiniMax 的 voice_id xxx"）。
 
 **Recommended-value rules**:
-- 生成模式：默认 `edge`；当用户明确追求高质量云端音色或提供 cloud voice ID 时，按用户指定选 `elevenlabs` / `minimax` / `qwen` / `cosyvoice`。
+- 生成模式：默认 `sherpa`（离线/内网，无需 API Key、不连外网）；当用户明确要在线 `edge`、高质量云端音色或提供 cloud voice ID 时，按用户指定选 `edge` / `elevenlabs` / `minimax` / `qwen` / `cosyvoice`。
 - 音色：从 Step 2 候选里挑最贴合 deck 调性的那一个。
-- 语速：edge 默认 `+0%`；notes 字数密集（页均 >4 句长句）建议 `-5%`；notes 简短紧凑建议 `+5%`；超出此范围需说明理由。Cloud providers 默认用 provider defaults，除非用户明确要调速或改风格。
+- 语速：sherpa 用 `--sherpa-speed 1.0`（倍率，1.0 为正常）；edge 默认 `+0%`，notes 字数密集（页均 >4 句长句）建议 `-5%`，简短紧凑建议 `+5%`，超出此范围需说明理由。Cloud providers 默认用 provider defaults，除非用户明确要调速或改风格。
 - 嵌入：默认推荐"是"；除非用户已有定制 PPTX 不希望覆盖。
 
 ---
@@ -126,9 +126,9 @@ Send a single message to the user that asks all three questions at once and prov
 Run sequentially — do NOT bundle:
 
 ```bash
-# 1A. Generate audio with edge (default)
+# 1A. Generate audio with sherpa (default, offline/intranet; no API key, no external network)
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
-  --voice <chosen-ShortName> --rate <chosen-rate>
+  --provider sherpa --voice 0 --sherpa-speed 1.0
 
 # 1B. Or generate audio with ElevenLabs
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
@@ -151,9 +151,9 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider cosyvoice --voice-id <chosen-voice> \
   --cosyvoice-model cosyvoice-v3-flash
 
-# 1F. Or generate audio with sherpa-onnx over the intranet (no API key, no external network)
+# 1F. Or generate audio with edge (online, no API key)
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
-  --provider sherpa --voice 0 --sherpa-speed 1.0
+  --provider edge --voice <chosen-ShortName> --rate <chosen-rate>
 
 # 2. (If user kept embedding) Re-export PPTX with audio embedded
 python3 skills/ppt-master/scripts/svg_to_pptx.py <project_path> \

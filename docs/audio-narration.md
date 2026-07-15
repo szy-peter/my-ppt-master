@@ -1,6 +1,6 @@
 # Audio Narration & Video Export
 
-PPT Master can turn the speaker notes into per-slide narration via [`edge-tts`](https://github.com/rany2/edge-tts) (Microsoft Edge's online neural voices) by default, or via ElevenLabs, MiniMax, Qwen TTS, and CosyVoice when you need higher-quality cloud narration or a cloned voice. It can then embed the audio back into the PPTX and let PowerPoint export the deck as an MP4 video — with synced narration and slide transitions, no extra tools.
+PPT Master can turn the speaker notes into per-slide narration via the offline `sherpa` backend by default (an intranet inference server — no API key, no external network), or via [`edge-tts`](https://github.com/rany2/edge-tts) (Microsoft Edge's online neural voices) / ElevenLabs / MiniMax / Qwen TTS / CosyVoice when you need online or higher-quality cloud narration or a cloned voice. It can then embed the audio back into the PPTX and let PowerPoint export the deck as an MP4 video — with synced narration and slide transitions, no extra tools.
 
 ## What you get
 
@@ -52,18 +52,23 @@ If you want to skip the AI flow and call the script directly:
 # 1. Make sure speaker notes are split (post-processing Step 7.1):
 python3 skills/ppt-master/scripts/total_md_split.py <project_path>
 
-# 2A. Generate MP3s with edge-tts (default, no API key)
+# 2A. Generate audio with sherpa (default — offline/intranet, no API key, no external network)
+export SHERPA_TTS_SERVER_URL="http://<intranet-host>:8300"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
-  --voice zh-CN-YunjianNeural --rate +0%
+  --provider sherpa --voice 0 --sherpa-speed 1.0
 
-# 2B. Or generate MP3s with ElevenLabs (requires ELEVENLABS_API_KEY)
+# 2B. Or generate MP3s with edge-tts (online, no API key)
+python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
+  --provider edge --voice zh-CN-YunjianNeural --rate +0%
+
+# 2C. Or generate MP3s with ElevenLabs (requires ELEVENLABS_API_KEY)
 export ELEVENLABS_API_KEY="your-elevenlabs-api-key"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider elevenlabs \
   --voice-id <elevenlabs-voice-id> \
   --elevenlabs-model eleven_multilingual_v2
 
-# 2C. Or generate MP3s with MiniMax (supports system and cloned voice_id)
+# 2D. Or generate MP3s with MiniMax (supports system and cloned voice_id)
 export MINIMAX_API_KEY="your-minimax-api-key"
 # Defaults to the China endpoint. For overseas access, set MINIMAX_TTS_BASE_URL=https://api.minimax.io/v1/t2a_v2.
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
@@ -71,7 +76,7 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --voice-id <minimax-voice-id> \
   --minimax-model speech-2.8-hd
 
-# 2D. Or generate audio with Qwen TTS (system voice or cloned voice)
+# 2E. Or generate audio with Qwen TTS (system voice or cloned voice)
 export DASHSCOPE_API_KEY="your-dashscope-api-key"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider qwen \
@@ -79,7 +84,7 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --qwen-model qwen3-tts-flash \
   --qwen-language-type Chinese
 
-# 2E. Or generate MP3s with CosyVoice (system voice or cloned/designed voice_id)
+# 2F. Or generate MP3s with CosyVoice (system voice or cloned/designed voice_id)
 export COSYVOICE_API_KEY="your-dashscope-api-key"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider cosyvoice \
@@ -139,6 +144,10 @@ Replace `--provider minimax` with `elevenlabs` / `qwen` / `cosyvoice` as needed;
 - **One-time setup, reusable forever** — the `voice_id` doesn't expire. Clone once, narrate any number of decks.
 
 ## Dependency
+
+The default narration backend is offline **sherpa**: set `SHERPA_TTS_SERVER_URL` to a `sherpa_server.py` instance on your intranet (no API key, no external network). See the [generate-audio workflow](../skills/ppt-master/workflows/generate-audio.md) for server setup.
+
+For the online `edge` fallback:
 
 ```bash
 python3 -m pip install edge-tts

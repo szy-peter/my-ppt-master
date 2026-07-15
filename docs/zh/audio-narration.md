@@ -1,6 +1,6 @@
 # 音频旁白与视频导出
 
-PPT Master 可以把演讲者备注转成逐页音频旁白（默认基于 [`edge-tts`](https://github.com/rany2/edge-tts) —— 微软 Edge 的在线神经网络语音；也可配置 ElevenLabs、MiniMax、Qwen TTS、CosyVoice 使用高质量或复刻音色），再把音频嵌入回 PPTX，由 PowerPoint 自带的"导出视频"一键产出带旁白和转场的 MP4，全程无需第三方工具。
+PPT Master 可以把演讲者备注转成逐页音频旁白（**默认走离线 `sherpa` 后端**——内网推理服务器，无需 API Key、不连外网；也可用 [`edge-tts`](https://github.com/rany2/edge-tts) 微软 Edge 在线语音，或 ElevenLabs、MiniMax、Qwen TTS、CosyVoice 用在线/高质量或复刻音色），再把音频嵌入回 PPTX，由 PowerPoint 自带的"导出视频"一键产出带旁白和转场的 MP4，全程无需第三方工具。
 
 ## 你会得到什么
 
@@ -52,11 +52,16 @@ python3 skills/ppt-master/scripts/notes_to_audio.py --list-voices --locale ja-JP
 # 1. 确保备注已切分（后处理 Step 7.1）
 python3 skills/ppt-master/scripts/total_md_split.py <project_path>
 
-# 2A. 用 edge-tts 生成 MP3（默认，无需 API Key）
+# 2A. 用 sherpa 生成音频（默认 —— 离线/内网，无需 API Key、不连外网）
+export SHERPA_TTS_SERVER_URL="http://<内网ip>:8300"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
-  --voice zh-CN-YunjianNeural --rate +0%
+  --provider sherpa --voice 0 --sherpa-speed 1.0
 
-# 2B. 用 MiniMax 生成 MP3（支持系统音色或复刻 voice_id）
+# 2B. 用 edge-tts 生成 MP3（在线，无需 API Key）
+python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
+  --provider edge --voice zh-CN-YunjianNeural --rate +0%
+
+# 2C. 用 MiniMax 生成 MP3（支持系统音色或复刻 voice_id）
 export MINIMAX_API_KEY="your-minimax-api-key"
 # 默认使用国内地址；海外访问可设置 MINIMAX_TTS_BASE_URL=https://api.minimax.io/v1/t2a_v2
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
@@ -64,7 +69,7 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --voice-id <minimax-voice-id> \
   --minimax-model speech-2.8-hd
 
-# 2C. 用 Qwen TTS 生成音频（系统音色或复刻音色）
+# 2D. 用 Qwen TTS 生成音频（系统音色或复刻音色）
 export DASHSCOPE_API_KEY="your-dashscope-api-key"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider qwen \
@@ -72,7 +77,7 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --qwen-model qwen3-tts-flash \
   --qwen-language-type Chinese
 
-# 2D. 用 CosyVoice 生成 MP3（系统音色或复刻/设计音色）
+# 2E. 用 CosyVoice 生成 MP3（系统音色或复刻/设计音色）
 export COSYVOICE_API_KEY="your-dashscope-api-key"
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
   --provider cosyvoice \
@@ -125,6 +130,10 @@ python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \
 - **一次复刻、长期复用** —— `voice_id` 不过期。复刻一次，可以给任意多份 deck 配旁白。
 
 ## 依赖
+
+默认旁白后端是离线 **sherpa**：把 `SHERPA_TTS_SERVER_URL` 指向内网上的 `sherpa_server.py` 实例（无需 API Key、不连外网）。服务端搭建见 [generate-audio 工作流](../../skills/ppt-master/workflows/generate-audio.md)。
+
+在线 `edge` 回退方案：
 
 ```bash
 python3 -m pip install edge-tts

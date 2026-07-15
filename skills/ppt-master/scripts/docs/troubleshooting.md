@@ -80,7 +80,7 @@ pip install -r requirements.txt
 
 Important optional packages:
 - `python-pptx` for PPTX export
-- `edge-tts` for `notes_to_audio.py` recorded narration audio
+- `sherpa` server (`SHERPA_TTS_SERVER_URL`) for `notes_to_audio.py` default offline narration; `edge-tts` for the online fallback
 - `Pillow` for image utilities
 - `numpy` for watermark removal
 - `PyMuPDF` for PDF conversion
