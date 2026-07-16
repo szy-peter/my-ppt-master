@@ -125,6 +125,8 @@ Send a single message to the user that asks all three questions at once and prov
 
 Run sequentially — do NOT bundle:
 
+> **Run in the background by default** (`run_in_background: true`) — serial sherpa TTS can exceed the 10-min foreground cap.
+
 ```bash
 # 1A. Generate audio with sherpa (default, offline/intranet; no API key, no external network)
 python3 skills/ppt-master/scripts/notes_to_audio.py <project_path> \

@@ -255,6 +255,8 @@ Record the confirmed audio config into `project.json`:
 
 Run with the confirmed values:
 
+> **Run in the background by default** (`run_in_background: true`) — serial sherpa TTS can exceed the 10-min foreground cap.
+
 ```bash
 # Default — offline sherpa (intranet; no API key, no external network)
 python3 skills/ppt-master/scripts/notes_to_audio.py "<project>" \
