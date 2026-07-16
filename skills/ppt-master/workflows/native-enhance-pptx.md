@@ -215,7 +215,7 @@ python3 skills/ppt-master/scripts/native_enhance_pptx.py validate "<project>"
 Follow the same one-shot interaction standard as [`generate-audio`](./generate-audio.md):
 
 1. Determine the notes' primary language.
-2. List available voices for the selected backend.
+2. Run the connectivity + capability probe from [`generate-audio`](./generate-audio.md) §2 and offer only the backends it finds available — ONLINE → offline (`sherpa`) + online (`edge`) + each cloud provider with a configured `.env` key; OFFLINE → `sherpa` only. List voices for those backends.
 3. Recommend backend, voice, rate/settings, and whether to embed audio back into the PPTX.
 4. Ask the user to accept all recommendations or override any field.
 
@@ -231,7 +231,7 @@ For intranet sherpa voices:
 python3 skills/ppt-master/scripts/notes_to_audio.py --provider sherpa --list-voices
 ```
 
-sherpa voices are speaker IDs of the server's model (no online catalog); use `0` for single-speaker Chinese VITS models.
+sherpa voices are speaker IDs of the server's model (no online catalog). For the current **kokoro-multi-lang** model, Chinese voices are sid 3–102 (female 3–57, male 58–102); the repo default is **sid 58 (中文男声)**.
 
 **⛔ BLOCKING**: Stop here and wait for explicit user confirmation of audio backend, voice, rate/settings, and embedding. Do not run `notes_to_audio.py` before this confirmation.
 

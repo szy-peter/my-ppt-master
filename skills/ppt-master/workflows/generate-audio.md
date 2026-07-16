@@ -38,9 +38,43 @@ The AI already knows the deck's language from writing the notes. No detection sc
 
 ---
 
-## Step 2: Choose audio backend and pull the voice catalog
+## Step 2: Probe environment, then pull available voice catalogs
 
-Default to **sherpa** (offline/intranet; needs `SHERPA_TTS_SERVER_URL` pointing at a reachable `sherpa_server.py`) unless the user explicitly asks for `edge-tts` (no-key online) or a cloud provider / higher-quality cloud narration / a cloned voice.
+The backends offered are **connectivity-aware**: online backends (`edge` + cloud providers) appear only when the environment has internet, and each cloud provider appears only when its API key is configured. Probe first, then list voices only for backends the probe found available.
+
+**Probe** (run once; the `.env` search order is listed in *When to Run* above):
+
+```bash
+# 1. Internet connectivity — decides the online/offline branch
+timeout 5 curl -fsS -o /dev/null https://www.bing.com && echo ONLINE || echo OFFLINE
+
+# 2. edge-tts installed?
+python3 -c "import edge_tts" 2>/dev/null && echo "edge-tts: installed" || echo "edge-tts: missing"
+
+# 3. Cloud provider keys configured (checks each .env in the search order)
+for f in ./.env skills/ppt-master/.env ~/.ppt-master/.env; do
+  [ -f "$f" ] || continue
+  for k in ELEVENLABS_API_KEY MINIMAX_API_KEY QWEN_API_KEY DASHSCOPE_API_KEY COSYVOICE_API_KEY; do
+    grep -qE "^$k=.+" "$f" && echo "$k: configured ($f)"
+  done
+done
+
+# 4. sherpa intranet server reachable?
+python3 skills/ppt-master/scripts/notes_to_audio.py --provider sherpa --list-voices 2>&1 | head -3
+```
+
+**Menu assembly** — build the offered-backends set from the probe:
+
+| Probe result | Backends offered |
+|---|---|
+| ONLINE + edge-tts installed + ≥1 cloud key | sherpa (if server ok) · edge · each cloud provider with a key |
+| ONLINE + edge-tts installed, no cloud keys | sherpa (if server ok) · edge — name the cloud providers that still need a key |
+| ONLINE + edge-tts missing | sherpa (if server ok) · each cloud provider with a key — note edge-tts not installed |
+| OFFLINE | sherpa only (if server ok) — `edge` and all cloud providers need public internet, exclude them |
+
+**Default — sherpa (may override)**: recommend `sherpa` (offline/intranet, no API key, no external network) when its server is reachable, even when online. But the *menu* must include every online backend the probe found — do not hide a viable online option behind the default.
+
+**Pull voice catalogs** only for backends the probe found available:
 
 **edge backend**:
 
@@ -68,7 +102,7 @@ python3 skills/ppt-master/scripts/notes_to_audio.py --provider cosyvoice --list-
 python3 skills/ppt-master/scripts/notes_to_audio.py --provider sherpa --list-voices
 ```
 
-sherpa voices are speaker IDs of the server's model (no online catalog). Recommend speaker `0` for single-speaker Chinese VITS models.
+sherpa voices are speaker IDs of the server's model (no online catalog). For the current **kokoro-multi-lang** model, Chinese voices are sid 3–102 (female 3–57, male 58–102); the repo default is **sid 58 (中文男声)**.
 
 The output is a flat list of all available voices for the selected provider. From this list, the AI picks **3–6 candidates** to recommend, applying these rules:
 
@@ -93,11 +127,13 @@ Send a single message to the user that asks all three questions at once and prov
 
 **Cloned-voice fast path**: if the user mentioned a cloned voice / 克隆音色 / 复刻音色 / "my own voice" along with a `voice_id`, skip the voice-recommendation list — set the provider to whichever the user named (`elevenlabs` / `minimax` / `qwen` / `cosyvoice`), pin the `voice_id` they gave you, and only confirm rate + embed-or-not.
 
+**Offered options are probe-bound**: the 生成模式 candidates and the voice list come from the Step 2 probe. OFFLINE → the menu is sherpa-only (do not offer `edge` or cloud providers). ONLINE → include every backend the probe found available, and name any cloud provider that needs a key the user has not yet configured.
+
 **Message template** (Chinese; translate to user's chat language if different):
 
 > 检测到 notes 主语言为 **<语言>**（locale: `<locale>`）。基于 deck 调性（<风格>），我推荐以下配置：
 >
-> **生成模式**：⭐ 推荐 `<edge|elevenlabs|minimax|qwen|cosyvoice>`（理由：<一句话，如"无需配置，稳定生成"或"用户要求高质量云端音色">）。
+> **生成模式**：⭐ 推荐 `<sherpa|edge|elevenlabs|minimax|qwen|cosyvoice>`（理由：<一句话，如"离线稳定无需 Key"或"用户要在线/高质量云端音色">）。
 >
 > **音色**：
 > - **[1] <ShortName>** — <性别·调性·适用场景> ⭐ **推荐**
@@ -114,7 +150,7 @@ Send a single message to the user that asks all three questions at once and prov
 > 直接回"好"用全部推荐值，或告诉我想改的部分（如"音色 2，语速 -5%"或"用 MiniMax 的 voice_id xxx"）。
 
 **Recommended-value rules**:
-- 生成模式：默认 `sherpa`（离线/内网，无需 API Key、不连外网）；当用户明确要在线 `edge`、高质量云端音色或提供 cloud voice ID 时，按用户指定选 `edge` / `elevenlabs` / `minimax` / `qwen` / `cosyvoice`。
+- 生成模式：默认推荐 `sherpa`（离线/内网，无需 API Key、不连外网）。Step 2 探测为 ONLINE 时，菜单须同时列出 `edge` 与已配 Key 的云端后端供用户选择；用户选了在线后端，按其指定用 `edge` / `elevenlabs` / `minimax` / `qwen` / `cosyvoice`。OFFLINE 时只给 `sherpa`。
 - 音色：从 Step 2 候选里挑最贴合 deck 调性的那一个。
 - 语速：sherpa 用 `--sherpa-speed 1.0`（倍率，1.0 为正常）；edge 默认 `+0%`，notes 字数密集（页均 >4 句长句）建议 `-5%`，简短紧凑建议 `+5%`，超出此范围需说明理由。Cloud providers 默认用 provider defaults，除非用户明确要调速或改风格。
 - 嵌入：默认推荐"是"；除非用户已有定制 PPTX 不希望覆盖。
