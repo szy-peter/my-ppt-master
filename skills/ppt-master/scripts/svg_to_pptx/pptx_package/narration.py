@@ -135,15 +135,22 @@ def probe_audio_duration(audio_path: Path) -> float | None:
         return None
 
 
-def next_shape_id(slide_xml: str) -> int:
-    """Return the next slide-local non-visual shape id."""
+def next_shape_id(
+    slide_xml: str, *, allow_zero_shape_id: bool = False
+) -> int:
+    """Return the next slide-local non-visual shape id.
+
+    allow_zero_shape_id tolerates an existing cNvPr id of 0 (schema-valid;
+    common on imported decks) instead of rejecting it. The slide's spTree
+    always carries cNvPr id=1, so the returned id stays >= 2.
+    """
     root = parse_source_xml(slide_xml)
     if root.tag != _qn(PML_NS, "sld"):
         raise ValueError("narration source XML root must be p:sld")
     ids = _numeric_ids(
         root.iter(_qn(PML_NS, "cNvPr")),
         "shape",
-        minimum=1,
+        minimum=0 if allow_zero_shape_id else 1,
     )
     next_id = max(ids, default=1) + 1
     if next_id > MAX_OOXML_UNSIGNED_INT:
@@ -403,6 +410,7 @@ def inject_narration(
     audio_rid: str,
     media_rid: str,
     poster_rid: str,
+    allow_zero_shape_id: bool = False,
 ) -> str:
     """Inject a hidden narration media shape and slide-entry autoplay timing."""
     if isinstance(shape_id, bool) or not isinstance(shape_id, int) or shape_id <= 0:
@@ -426,7 +434,7 @@ def inject_narration(
     shape_ids = _numeric_ids(
         root.iter(_qn(PML_NS, "cNvPr")),
         "shape",
-        minimum=1,
+        minimum=0 if allow_zero_shape_id else 1,
     )
     if shape_id in shape_ids:
         raise ValueError(f"narration shape id already exists on slide: {shape_id}")

@@ -236,6 +236,7 @@ def apply_plan(
             validate_pptx_animation_package(
                 candidate_path,
                 require_supported_effects=False,
+                allow_zero_shape_id=True,
             )
         except ValueError as exc:
             raise RuntimeError(

@@ -793,6 +793,8 @@ def _direct_conditions(ctn: ET.Element) -> list[ET.Element]:
 
 def _shape_index(
     slide_root: ET.Element,
+    *,
+    allow_zero_shape_id: bool = False,
 ) -> tuple[dict[int, tuple[str, bool]], list[str]]:
     parent_map = {
         child: parent
@@ -808,7 +810,11 @@ def _shape_index(
             'id',
             'p:cNvPr@id',
             errors,
-            minimum=1,
+            # ST_DrawingElementId is xsd:unsignedInt, so cNvPr id=0 is schema-valid.
+            # Default >=1 catches generator bugs on decks we author (export route);
+            # allow_zero_shape_id tolerates id=0 on imported/patched decks. Duplicate
+            # and animation-target (spTgt@spid) checks apply regardless.
+            minimum=0 if allow_zero_shape_id else 1,
             maximum=MAX_OOXML_UNSIGNED_INT,
         )
         if shape_id is None:
@@ -1044,6 +1050,7 @@ def validate_slide_animation_structure(
     slide_root: ET.Element,
     *,
     require_supported_effects: bool = False,
+    allow_zero_shape_id: bool = False,
 ) -> list[str]:
     """Return root timing, target, and generated-entrance structure errors."""
     errors: list[str] = []
@@ -1125,7 +1132,9 @@ def validate_slide_animation_structure(
             f'p:timing must contain exactly one tmRoot time node; found {len(roots)}'
         )
 
-    shape_index, shape_errors = _shape_index(slide_root)
+    shape_index, shape_errors = _shape_index(
+        slide_root, allow_zero_shape_id=allow_zero_shape_id
+    )
     errors.extend(shape_errors)
     for target in timing.iter(_qn(PML_NS, 'spTgt')):
         shape_id = _int_attribute(
@@ -1214,6 +1223,7 @@ def read_slide_animation_sequence(
     slide_xml: str | bytes,
     *,
     require_supported_effects: bool = False,
+    allow_zero_shape_id: bool = False,
 ) -> AnimationSequenceSummary:
     """Read and validate the logical entrance sequence from one slide XML."""
     data = slide_xml.encode('utf-8') if isinstance(slide_xml, str) else slide_xml
@@ -1224,6 +1234,7 @@ def read_slide_animation_sequence(
     errors = validate_slide_animation_structure(
         root,
         require_supported_effects=require_supported_effects,
+        allow_zero_shape_id=allow_zero_shape_id,
     )
     row_errors: list[str] = []
     rows = _animation_rows(root, row_errors)
@@ -1341,6 +1352,7 @@ def validate_pptx_animation_package(
     pptx_path: str | Path,
     *,
     require_supported_effects: bool = False,
+    allow_zero_shape_id: bool = False,
 ) -> None:
     """Validate timing placement and shape references for every slide part."""
     path = Path(pptx_path)
@@ -1361,6 +1373,7 @@ def validate_pptx_animation_package(
                 for error in validate_slide_animation_structure(
                     root,
                     require_supported_effects=require_supported_effects,
+                    allow_zero_shape_id=allow_zero_shape_id,
                 ):
                     errors.append(f'{name}: {error}')
     except (OSError, zipfile.BadZipFile) as exc:

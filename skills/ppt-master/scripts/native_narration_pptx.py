@@ -494,7 +494,7 @@ def _apply_audio(
     slide_xml_path = extract_dir / slide.part_name
     slide_xml = slide_xml_path.read_text(encoding="utf-8")
     source_animation_fingerprint = object_animation_fingerprint(slide_xml)
-    shape_id = next_shape_id(slide_xml)
+    shape_id = next_shape_id(slide_xml, allow_zero_shape_id=True)
     slide_xml = inject_narration(
         slide_xml,
         shape_id=shape_id,
@@ -502,6 +502,7 @@ def _apply_audio(
         audio_rid=audio_rid,
         media_rid=media_rid,
         poster_rid=poster_rid,
+        allow_zero_shape_id=True,
     )
 
     advance = AdvanceUpdate(mode="preserve")
@@ -998,6 +999,7 @@ def apply_project(args: argparse.Namespace) -> int:
                 validate_pptx_animation_package(
                     candidate_path,
                     require_supported_effects=False,
+                    allow_zero_shape_id=True,
                 )
             except ValueError as exc:
                 raise RuntimeError(
