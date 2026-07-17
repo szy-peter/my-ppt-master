@@ -33,6 +33,18 @@ Route selection authority for PPT Master. Use this file before entering the main
 
 **Hard rule**: Apply SVG page-design closure only after selecting an SVG-authoring route. Do not reroute a native PPTX operation merely to make every package-level capability pass through SVG.
 
+### 1.2 Narration Routing
+
+Discriminate by **artifact type**, not request wording — the same "narration / 配音 / 旁白" request routes differently depending on what the user points at.
+
+| Artifact | Route |
+|---|---|
+| PPT Master project (`notes/*.md` + `svg_output/` or exported deck) | [`generate-audio`](./generate-audio.md) (§4) |
+| Existing/external `.pptx`, or `project.json` `kind: native_pptx_enhancement` | [`native-enhance-pptx`](./native-enhance-pptx.md) (§3) |
+| Unclear (no `notes/`, no project) | Ask: "PPT Master project or existing `.pptx`?" — do not guess |
+
+**Hard rule**: This subsection decides narration routing by artifact type first and overrides the §3/§4 trigger wording when both match.
+
 ---
 
 ## 2. Main Route Matrix
