@@ -67,3 +67,5 @@ Central recovery rules for common PPT Master failures. Route-specific workflow f
 | Browser annotations saved after export | [`live-preview`](./live-preview.md) Step 2 |
 
 **Default - resume at the owning failed step**: Do not restart the planning session or regenerate prior artifacts unless the owning source has changed.
+
+> **Global UI switches**: `CONFIRM_UI_ENABLED=false` / `LIVE_PREVIEW_ENABLED=false` (env, default `true`) make any confirm / live-preview launch refuse with a `disabled via …` directive (exit non-zero, no `result.json`). For a confirm-stage recovery in that case, fall back to the chat confirmation for that stage; `--shutdown` still works for cleanup.

@@ -43,6 +43,8 @@ The launcher binds `127.0.0.1:5050` (or the next free port), starts the server i
 
 Do not wait for confirmation before launching — the user already asked for preview, so launching is the response. If another project already holds the port, the launcher auto-advances to the next free one — report the actual URL from the launch log (`--port <other>` still forces a specific port). Remote access → see the appendix.
 
+> **Global UI switch**: if `LIVE_PREVIEW_ENABLED=false` (env, default `true`), the launcher refuses with a `disabled via LIVE_PREVIEW_ENABLED=false` directive and exits non-zero — that is **not** a launch failure. Tell the user the live preview is globally disabled, offer the chat path ("describe the change in chat"), or have them re-enable the switch. The Step 6 auto-startup honors the same switch (see SKILL.md).
+
 ---
 
 ## Step 2: Apply submitted annotations

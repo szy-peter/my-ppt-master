@@ -161,6 +161,50 @@ def load_prefixed_env_file(
 
 
 # ============================================================
+# Interactive UI Switches
+# ============================================================
+
+# Truthy / falsy tokens for boolean env values (case-insensitive).
+_ENV_BOOL_TRUE = frozenset({'1', 'true', 'yes', 'on', 'y', 'enable', 'enabled'})
+_ENV_BOOL_FALSE = frozenset({'0', 'false', 'no', 'off', 'n', 'disable', 'disabled'})
+
+
+def env_bool(key: str, default: bool = True) -> bool:
+    """Parse a boolean environment variable.
+
+    Accepts common truthy (``1``/``true``/``yes``/``on``) and falsy
+    (``0``/``false``/``no``/``off``) tokens, case-insensitively. An unset,
+    empty, or unrecognized value falls back to ``default``.
+    """
+    raw = os.environ.get(key)
+    if raw is None or raw.strip() == '':
+        return default
+    value = raw.strip().lower()
+    if value in _ENV_BOOL_FALSE:
+        return False
+    if value in _ENV_BOOL_TRUE:
+        return True
+    return default
+
+
+def is_ui_enabled(key: str, *, prefix: str, default: bool = True) -> bool:
+    """Evaluate an interactive-UI switch from the shared ``.env``.
+
+    Loads only the ``prefix*`` keys via :func:`load_prefixed_env_file` (so one
+    shared ``.env`` holding image / audio / UI values does not leak unrelated
+    keys into the UI process), honoring the documented resolution order and the
+    "real process env var wins" rule. A ``.env`` parse error is swallowed so a
+    malformed unrelated line can never block a UI gate — the switch then falls
+    back to ``default`` (current behavior preserved).
+    """
+    try:
+        load_prefixed_env_file((prefix,))
+    except ValueError:
+        pass
+    return env_bool(key, default=default)
+
+
+# ============================================================
 # Canvas Format Configuration
 # ============================================================
 

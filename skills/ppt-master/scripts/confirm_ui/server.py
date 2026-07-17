@@ -64,6 +64,7 @@ from server_common import (  # noqa: E402
     read_lock as _read_lock,
     release_lock as _release_lock,
 )
+from config import is_ui_enabled  # noqa: E402
 
 configure_utf8_stdio()
 
@@ -1018,6 +1019,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     # recommendations.json (the page may never have been confirmed).
     if args.shutdown:
         return _shutdown_existing(project_path / LOCK_FILE_NAME)
+
+    # Global UI switch (CONFIRM_UI_ENABLED, default on). Every launch / wait
+    # mode short-circuits when disabled so the agent falls back to the chat
+    # confirmation path. --shutdown above still runs, so Step 4 cleanup is safe.
+    if not is_ui_enabled('CONFIRM_UI_ENABLED', prefix='CONFIRM_UI_'):
+        logger.info(
+            'disabled via CONFIRM_UI_ENABLED=false — use the chat '
+            'confirmation path (SKILL.md Step 4).'
+        )
+        return 3
 
     # Staged wait: attach to the server launched by the first --wait and block
     # until the page writes the requested intermediate or final result.json.

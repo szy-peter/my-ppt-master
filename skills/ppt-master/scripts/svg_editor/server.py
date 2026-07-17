@@ -70,6 +70,7 @@ from server_common import (  # noqa: E402
     read_lock as _read_lock,
     release_lock as _release_lock,
 )
+from config import is_ui_enabled  # noqa: E402
 
 configure_utf8_stdio()
 
@@ -1136,6 +1137,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     project_path = Path(args.project_dir).resolve()
     if args.shutdown:
         return _shutdown_existing(project_path)
+
+    # Global UI switch (LIVE_PREVIEW_ENABLED, default on). When disabled the
+    # preview server never starts; --shutdown above still runs for cleanup.
+    # SVG generation and export continue without the browser checkpoint.
+    if not is_ui_enabled('LIVE_PREVIEW_ENABLED', prefix='LIVE_PREVIEW_'):
+        logger.info(
+            'disabled via LIVE_PREVIEW_ENABLED=false — skip the live preview '
+            'server; SVG generation and export continue (SKILL.md Step 6).'
+        )
+        return 3
 
     svg_output = project_path / 'svg_output'
     if not svg_output.exists():
